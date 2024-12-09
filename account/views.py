@@ -1,3 +1,4 @@
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
@@ -47,19 +48,21 @@ class CheckCodeView(APIView):
     my_tags = [
         "check-code",
     ]
-
     def post(self, request, *args, **kwargs):
-        email = request.data.get("email")
-        code = request.data.get("code")
-        with open("code.txt", "r") as f:
-            verify = f.read()
-            f.close()
-        if verify != code:
-            raise ValidationError(
-                "Verification code is not correct", code=status.HTTP_400_BAD_REQUEST
-            )
-        User.objects.filter(email=email).update(is_active=True)
-        return Response("Check code is success", status=status.HTTP_200_OK)
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        # email = request.data.get("email")
+        # code = request.data.get("code")
+        # with open("code.txt", "r") as f:
+        #     verify = f.read()
+        #     f.close()
+        # if verify != code:
+        #     raise ValidationError(
+        #         "Verification code is not correct", code=status.HTTP_400_BAD_REQUEST
+        #     )
+        # User.objects.filter(email=email).update(is_active=True)
+        # return Response("Check code is success", status=status.HTTP_200_OK)
 
 
 class RegisterView(APIView):
@@ -68,6 +71,7 @@ class RegisterView(APIView):
     my_tags = [
         "register",
     ]
+
 
     def post(self, request, *args, **kwargs):
         email = request.data.get("email")

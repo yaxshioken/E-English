@@ -42,8 +42,15 @@ DJANGO_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 ]
-CUSTOM_APPS = ["account", "essential"]
-THIRD_PARTY_APPS = ["rest_framework", "drf_yasg"]
+CUSTOM_APPS = [
+    "account",
+    "essential"
+]
+THIRD_PARTY_APPS = [
+    "rest_framework",
+    "drf_yasg",
+    'django_filters'
+]
 INSTALLED_APPS = DJANGO_APPS + CUSTOM_APPS + THIRD_PARTY_APPS
 
 
@@ -158,3 +165,9 @@ CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
 AUTH_USER_MODEL = "account.User"
 USERNAME_FIELD = "email"
 SWAGGER_SETTINGS = {"DEFAULT_AUTO_SCHEMA_CLASS": "config.swaggers.CustomAutoSchema"}
+REST_FRAMEWORK = {
+    'DEFAULT_FILTER_BACKENDS': [
+        # 'django_filters.rest_framework.DjangoFilterBackend'
+        'config.search.CustomSearchFilter',
+    ]
+}

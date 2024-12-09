@@ -1,38 +1,61 @@
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import status
-from rest_framework.decorators import action
+
+from rest_framework.filters import SearchFilter
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from yaml import serialize
 
 from essential.models import Book, Unit, Vocab
-from essential.serializers import (BookSerializer, CheckinYourselfSerializer,
-                                   CheckWordSerializer, UnitSerializer,
+
+from essential.serializers import (BookSerializer,
+                                   CheckinYourselfSerializer,
+                                   CheckWordSerializer,
+                                   UnitSerializer,
                                    VocabSerializer)
 
 
 class BookView(APIView):
     queryset = Book.objects.all()
     serializer_class = BookSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['name', 'level']
+    search_fields = ['name', 'level']
     my_tags = ("book",)
-    @action(detail=True, methods=["POST"])
+
+    def get(self, request, id=None):
+        """
+        this is queryset objects all given by id, name, level
+        """
+        if id:
+            book = get_object_or_404(Book, pk=id)
+            serializer = self.serializer_class(book)
+            return Response(serializer.data)
+
+        queryset = Book.objects.all()
+        name = self.request.query_params.get('name', None)
+        level = self.request.query_params.get('level', None)
+
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+
+        if level:
+            try:
+                queryset = queryset.filter(level=level)
+            except ValueError:
+                return Response({"detail": "level butun son bo'lishi kerak"},
+                                status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    @action(methods=['GET'], detail=True)
-    def get(self, request,id=None):
-        if id:
-            book=get_object_or_404(Book, pk=id)
-            serializer =self.serializer_class(book)
-            return Response(serializer.data)
-        else:
-            books = Book.objects.all()
-            serializer = self.serializer_class(books, many=True)
-            return Response(serializer.data)
-    @action(methods=['PUT'], detail=True)
+
     def put(self, request, id=None):
         book = get_object_or_404(Book, id=id)
         serializer = self.serializer_class(book, data=request.data)
@@ -40,38 +63,63 @@ class BookView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    @action(methods='PATCH', detail=True)
+
     def patch(self, request, id=None):
         book = get_object_or_404(Book, id=id)
         serializer = self.serializer_class(book, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
-    @action(methods='DELETE', detail=True)
+
     def delete(self, request, id=None):
         book = get_object_or_404(Book, id=id)
         try:
             book.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
-            return Response({'message':f"ERROR:{e}"},status=status.HTTP_400_BAD_REQUEST)
-        return Response({"message":"Successfully deleted!!!"},status=status.HTTP_204_NO_CONTENT)
+            return Response({'message': f"ERROR:{e}"}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"message": "Successfully deleted!!!"}, status=status.HTTP_204_NO_CONTENT)
+
 
 class UnitView(APIView):
     queryset = Unit.objects.all()
     serializer_class = UnitSerializer
+    filter_backends = [DjangoFilterBackend, SearchFilter]
+    filterset_fields = ['name', 'unit_num', 'book']
+    search_fields = ['name', 'unit_num', 'book']
     my_tags = ("unit",)
-    @action(methods=['GET'], detail=True,)
-    def get(self, request,id=None):
+
+    def get(self, request, id=None):
+        """
+        this is queryset objects all given by id, name, unit_num, book
+        """
         if id:
-            unit=get_object_or_404(Unit, id=id)
+            unit = get_object_or_404(Unit, pk=id)
             serializer = self.serializer_class(unit)
             return Response(serializer.data)
-        else:
-            unit=Unit.objects.all()
-            serializer = self.serializer_class(unit, many=True)
-            return Response(serializer.data)
-    @action(methods=['POST'], detail=True)
+
+        queryset = Unit.objects.all()
+        name = self.request.query_params.get('name',None)
+        unit_num = self.request.query_params.get('unit_num',None)
+        book = self.request.query_params.get('book',None)
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+
+        if unit_num:
+            try:
+                queryset = queryset.filter(unit_num__in=unit_num)
+            except ValueError:
+                return Response({"detail": "unit_num butun son bo'lishi kerak"},
+                                status=status.HTTP_400_BAD_REQUEST)
+        if book:
+            try:
+                queryset = queryset.filter(book=book)
+            except ValueError:
+                return Response({"detail": "book_id butun son bo'lishi kerak"}, )
+
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
@@ -79,7 +127,6 @@ class UnitView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(methods=['PUT'], detail=True)
     def put(self, request, id=None):
         unit = get_object_or_404(Unit, id=id)
         serializer = self.serializer_class(unit, data=request.data)
@@ -87,7 +134,7 @@ class UnitView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    @action(methods=['PATCH'], detail=True)
+
     def patch(self, request, id=None):
         unit = get_object_or_404(Unit, id=id)
         serializer = self.serializer_class(unit, data=request.data, partial=True)
@@ -95,22 +142,37 @@ class UnitView(APIView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    @action(methods='DELETE', detail=True)
-    def delete(self,request, id=None):
+
+    def delete(self, request, id=None):
         unit = get_object_or_404(Unit, id=id)
         try:
             unit.delete()
 
-            return Response(data="Successfully deleted!!!",status=status.HTTP_204_NO_CONTENT)
+            return Response(data="Successfully deleted!!!", status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
-            return Response({"message":str(e)},status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class VocabularyView(APIView):
-    queryset = Vocab.objects.all()
     serializer_class = VocabSerializer
-    my_tags = ("vocab",)
-
-    @action(methods=['POST'], detail=True)
+    queryset = Vocab.objects.all()
+    my_tags = ("vocabulary",)
+    def get(self, request, id=None):
+        """ This is queryset objects all given by id, en, uz, unit. """
+        if id:
+            vocab = get_object_or_404(Vocab, pk=id)
+            serializer = self.serializer_class(vocab)
+            return Response(serializer.data)
+        queryset = Vocab.objects.all()
+        en = request.query_params.get('en', None)
+        uz = request.query_params.get('uz', None)
+        unit = request.query_params.get('unit', None)
+        if en:
+            queryset = queryset.filter(en__icontains=en)
+        if uz: queryset = queryset.filter(uz__icontains=uz)
+        if unit: queryset = queryset.filter(unit=unit)
+        serializer = self.serializer_class(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
@@ -118,18 +180,6 @@ class VocabularyView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(methods=['GET'], detail=True)
-    def get(self, request,id=None):
-        if id:
-            vocab=get_object_or_404(Vocab, id=id)
-            serializer = self.serializer_class(vocab)
-            return Response(serializer.data)
-        else:
-            vocabs = Vocab.objects.all()
-            serializer = self.serializer_class(vocabs, many=True)
-            return Response(serializer.data)
-
-    @action(methods=['PUT'], detail=True)
     def put(self, request, id=None):
         vocab = get_object_or_404(Vocab, id=id)
         serializer = self.serializer_class(vocab, data=request.data)
@@ -137,22 +187,20 @@ class VocabularyView(APIView):
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(methods=['PATCH'], detail=True)
     def patch(self, request, id=None):
-        vocab= get_object_or_404(Vocab, id=id)
-        serializer=self.serializer_class(vocab,data=request.data, partial=True)
+        vocab = get_object_or_404(Vocab, id=id)
+        serializer = self.serializer_class(vocab, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    @action(methods=['DELETE'], detail=True)
     def delete(self, request, id=None):
         vocab = get_object_or_404(Vocab, id=id)
         try:
             vocab.delete()
-            return Response({"message":"Successfully deleted!!!"},status=status.HTTP_204_NO_CONTENT)
+            return Response({"message": "Successfully deleted!!!"}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
-            return Response({"message":str(e)},status=status.HTTP_400_BAD_REQUEST)
+            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CheckView(APIView):
@@ -160,7 +208,6 @@ class CheckView(APIView):
     serializer_class = CheckinYourselfSerializer
     my_tags = ("check",)
 
-    @action(methods=['POST'], detail=True)
     def post(self, request, *args, **kwargs):
         book = request.data["book"]
         unit = request.data["unit"]
@@ -174,15 +221,12 @@ class CheckView(APIView):
         vocab = Vocab.objects.filter(unit=unit)
         serializer = VocabSerializer(vocab, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
-        # unit=Unit.objects.filter(book=book, unit_num=unit)
-        # vocab=Vocab.objects.filter(unit=unit)[0:]
-        # return Response(VocabSerializer(data=vocab,many=True), status=status.HTTP_200_OK)
 
 
 class CheckWordAPIView(APIView):
     my_tags = ("checkword",)
     serializer_class = CheckWordSerializer
-    @action(methods=['POST'],detail=True)
+
     def post(self, request):
         word = request.data["word"]
         soz = Vocab.objects.filter(en=word)

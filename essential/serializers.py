@@ -37,3 +37,12 @@ class CheckinYourselfSerializer(serializers.Serializer):
 
 class CheckWordSerializer(serializers.Serializer):
     word = serializers.CharField(max_length=50)
+class UnitFilterModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Unit
+        exclude = 'book',
+
+class VocabFilterModelSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Vocab
+        exclude = 'audio',"unit"

@@ -15,7 +15,10 @@ def send_email(email):
         from_email=os.getenv("EMAIL_HOST_USER"),
         recipient_list=[email],
     )
-    with open("code.txt", "a") as f:
-        f.write(f"Yuborilgan email:{email} uning kodi:{code}")
+    with open("detail.txt", "a") as f:
+        f.write(f"\nYuborilgan email:{email} uning kodi:{code}\n")
+        f.close()
+    with open("code.txt", "x") as f:
+        f.write(f"{code}")
         f.close()
     return code
