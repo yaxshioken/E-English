@@ -1,4 +1,5 @@
-from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Q
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import status
 
 from rest_framework.filters import SearchFilter
@@ -18,26 +19,28 @@ from essential.serializers import (BookSerializer,
 class BookView(APIView):
     queryset = Book.objects.all()
     serializer_class = BookSerializer
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = ['name', 'level']
+    filter_backends = (SearchFilter,)
     search_fields = ['name', 'level']
     my_tags = ("book",)
 
-    def get(self, request, id=None):
+    def get(self, request):
         """
-        this is queryset objects all given by id, name, level
+          Barcha kitoblar ro'yxatini olish
+          Ro'yxatni kitob nomi yoki darajasi bo'yicha filtrlash mumkin (katta-kichik harflarga sezgir emas).
+
+          So'rov Parametrlari:
+            - name: Kitob nomi bo'yicha filtr .
+            - level: Kitob darajasi bo'yicha filtr.
         """
-        if id:
-            book = get_object_or_404(Book, pk=id)
-            serializer = self.serializer_class(book)
-            return Response(serializer.data)
 
         queryset = Book.objects.all()
         name = self.request.query_params.get('name', None)
         level = self.request.query_params.get('level', None)
-
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) or Q(level__in=search))
         if name:
-            queryset = queryset.filter(name__icontains=name)
+            queryset = queryset.filter(name__contains=name)
 
         if level:
             try:
@@ -49,14 +52,63 @@ class BookView(APIView):
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @swagger_auto_schema(
+        operation_description="Yangi kitob yaratish uchun kitob ma'lumotlarini yuboring.Rasm keyinchalik yuklanadi",
+        request_body=BookSerializer,
+    )
     def post(self, request):
+        """
+
+            Tavsif: Yangi kitob yaratish uchun zarur bo'lgan ma'lumotlarni yuboring.
+            So'rov Tanasi:
+            name: Kitob nomi.
+            level: Kitob darajasi (masalan: boshlang'ich, o'rtacha, ilg'or).
+        Javoblar:
+            201 Created: Kitob muvaffaqiyatli yaratildi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+
+
+        """
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def put(self, request, id=None):
+
+class BookRetrieveUpdateDeleteAPIView(APIView):
+    queryset = Book.objects.all()
+    serializer_class = BookSerializer
+    my_tags = ("book",)
+
+    def get(self, request, id):
+        """
+           Tavsif: Bitta kitobni ID raqami bo'yicha olish.
+           So'rov Parametrlari:
+                id: Kitobning ID raqami.
+           Javoblar:
+                200 OK: Kitob muvaffaqiyatli topildi.
+                404 Not Found: Kitob topilmadi.
+        """
+        book = get_object_or_404(Book, pk=id)
+        serializer = self.serializer_class(book)
+        return Response(serializer.data)
+
+    @swagger_auto_schema(
+        operation_description="Mavjud kitobni IDsi bo'yicha yangilash barcha ma'lumotlarini yuboring.",
+        request_body=BookSerializer,
+    )
+    def put(self, request, id):
+        """
+        Tavsif: Mavjud kitobni ID bo'yicha yangilash.
+        So'rov Tanasi:
+            name: Yangi kitob nomi.
+            level: Yangi kitob darajasi.
+        Javoblar:
+            200 OK: Kitob muvaffaqiyatli yangilandi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+            404 Not Found: Kitob topilmadi.
+        """
         book = get_object_or_404(Book, id=id)
         serializer = self.serializer_class(book, data=request.data)
         if serializer.is_valid():
@@ -64,44 +116,70 @@ class BookView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def patch(self, request, id=None):
+    @swagger_auto_schema(
+        operation_description=" Mavjud kitobni qisman yangilash uchun zarur bo‘lgan url",
+        request_body=BookSerializer,
+    )
+    def patch(self, request, id):
+        """
+        Tavsif: Mavjud kitobni qisman yangilash.
+        So'rov Tanasi:
+            name (ixtiyoriy): Yangi kitob nomi.
+            level (ixtiyoriy): Yangi kitob darajasi.
+        Javoblar:
+            200 OK: Faoliyat muvaffaqiyatli amalga oshirildi va o'zgartirilgan maydonlar qaytariladi.
+            404 Not Found: Kitob topilmadi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+        """
         book = get_object_or_404(Book, id=id)
         serializer = self.serializer_class(book, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
-    def delete(self, request, id=None):
+    @swagger_auto_schema(
+        operation_description="Mavjud kitobni ID-si bo'yicha o'chirish",
+    )
+    def delete(self, request, id):
+        """
+        Tavsif: Kitobni ID raqami bo'yicha o'chirish.
+        So'rov Parametrlari:
+            id: Kitobning ID raqami.
+        Javoblar:
+            200 OK: Kitob muvaffaqiyatli o'chirildi.
+            404 Not Found: Kitob topilmadi.
+        """
         book = get_object_or_404(Book, id=id)
-        try:
-            book.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            return Response({'message': f"ERROR:{e}"}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({"message": "Successfully deleted!!!"}, status=status.HTTP_204_NO_CONTENT)
+        book.delete()
+        return Response(data={"message": "Kitob muvaffaqiyatli o'chirildi."}, status=status.HTTP_200_OK)
 
 
 class UnitView(APIView):
     queryset = Unit.objects.all()
     serializer_class = UnitSerializer
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_fields = ['name', 'unit_num', 'book']
-    search_fields = ['name', 'unit_num', 'book']
+    filter_backends = (SearchFilter,)
+    search_fields = ['name', 'unit_num', 'book__id']
     my_tags = ("unit",)
 
-    def get(self, request, id=None):
+    def get(self, request):
         """
-        this is queryset objects all given by id, name, unit_num, book
+       Tavsif: Unitlar ro'yxatini olish. nomi, unit raqami yoki kitob bo'yicha filtrlanishi mumkin.
+        So'rov Parametrlari:
+            name: Unit nomi bo'yicha filtr
+            unit_num: Unit raqami bo'yicha filtr.
+            book: Kitob IDsi bo'yicha filtr.
+        Javoblar:
+            200 OK: Unitlar ro'yxati muvaffaqiyatli qaytarildi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
         """
-        if id:
-            unit = get_object_or_404(Unit, pk=id)
-            serializer = self.serializer_class(unit)
-            return Response(serializer.data)
 
         queryset = Unit.objects.all()
-        name = self.request.query_params.get('name',None)
-        unit_num = self.request.query_params.get('unit_num',None)
-        book = self.request.query_params.get('book',None)
+        name = self.request.query_params.get('name', None)
+        unit_num = self.request.query_params.get('unit_num', None)
+        book = self.request.query_params.get('book', None)
+        search = self.request.query_params.get('search', None)
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) or Q(unit_num__in=search) | Q(book_id__in=search))
         if name:
             queryset = queryset.filter(name__icontains=name)
 
@@ -120,14 +198,62 @@ class UnitView(APIView):
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @swagger_auto_schema(
+        operation_description="Yangi Unit yaratish",
+        request_body=UnitSerializer,
+    )
     def post(self, request):
+        """
+        Tavsif: Yangi unitni yaratish.
+        So'rov Tanasi:
+            name: Unit nomi.
+            unit_num: Unit raqami.
+            book: Kitob IDsi.
+        Javoblar:
+            201 Created: Unit muvaffaqiyatli yaratildi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi
+        """
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def put(self, request, id=None):
+
+class UnitRetrieveUpdateDeleteAPIView(APIView):
+    queryset = Unit.objects.all()
+    serializer_class = UnitSerializer
+    my_tags = ("unit",)
+
+    def get(self, request, id):
+        """
+        Tavsif: Unitni ID bo'yicha olish.
+        So'rov Parametrlari:
+            id: Unitning ID raqami.
+        Javoblar:
+            200 OK: Unit muvaffaqiyatli topildi.
+            404 Not Found: Unit topilmadi.
+        """
+        unit = get_object_or_404(Unit, pk=id)
+        serializer = self.serializer_class(unit)
+        return Response(serializer.data)
+
+    @swagger_auto_schema(
+        operation_description="Mavjud unitni yangilash.",
+        request_body=UnitSerializer,
+    )
+    def put(self, request, id):
+        """
+            Tavsif: Mavjud unitni yangilash.
+            So'rov Tanasi:
+                name: Yangi unit nomi.
+                unit_num: Yangi unit raqami.
+                book_id: Kitob IDsi.
+            Javoblar:
+                200 OK: Unit muvaffaqiyatli yangilandi.
+                400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+                404 Not Found: Unit topilmadi.
+        """
         unit = get_object_or_404(Unit, id=id)
         serializer = self.serializer_class(unit, data=request.data)
         if serializer.is_valid():
@@ -135,7 +261,22 @@ class UnitView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def patch(self, request, id=None):
+    @swagger_auto_schema(
+        operation_description="Mavjud unitni qisman yangilash.",
+        request_body=UnitSerializer,
+    )
+    def patch(self, request, id):
+        """
+        Tavsif: Unitni qisman yangilash.
+        So'rov Tanasi:
+            name (ixtiyoriy): Yangi unit nomi.
+            unit_num (ixtiyoriy): Unit raqami.
+            book (ixtiyoriy): Kitob IDsi.
+        Javoblar:
+            200 OK: Unit muvaffaqiyatli yangilandi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+            404 Not Found: Unit topilmadi.
+        """
         unit = get_object_or_404(Unit, id=id)
         serializer = self.serializer_class(unit, data=request.data, partial=True)
         if serializer.is_valid():
@@ -143,26 +284,44 @@ class UnitView(APIView):
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def delete(self, request, id=None):
+    @swagger_auto_schema(
+        operation_description="Mavjud unitni ID-isi bo'yicha o'chirish"
+    )
+    def delete(self, request, id):
+        """
+        Tavsif: Unitni ID raqami bo'yicha o'chirish.
+        So'rov Parametrlari:
+            id: Unitning ID raqami.
+        Javoblar:
+            204 No Content: Unit  muvaffaqiyatli o'chirildi.
+            404 Not Found: Unit topilmadi.
+        """
         unit = get_object_or_404(Unit, id=id)
         try:
-            unit.delete()
-
-            return Response(data="Successfully deleted!!!", status=status.HTTP_204_NO_CONTENT)
+            if unit.delete():
+                    return Response({"message":"Unit  muvaffaqiyatli o'chirildi."},status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response(data=f"Xato:{str(e)}",status=status.HTTP_404_NOT_FOUND)
 
 class VocabularyView(APIView):
     serializer_class = VocabSerializer
     queryset = Vocab.objects.all()
+    filter_backends = (SearchFilter,)
+    search_fields = ('en', 'uz', 'unit')
     my_tags = ("vocabulary",)
-    def get(self, request, id=None):
-        """ This is queryset objects all given by id, en, uz, unit. """
-        if id:
-            vocab = get_object_or_404(Vocab, pk=id)
-            serializer = self.serializer_class(vocab)
-            return Response(serializer.data)
+
+    def get(self, request):
+        """
+            Tavsif: Barcha so'zlarni olish. Bu en, uz yoki unit  ustunlari bo'yicha filtrlanishi mumkin.
+            So'rov Parametrlari:
+                en: Inglizcha so'z .
+                uz: O'zbekcha tarjima .
+                unit: Unit IDsi.
+            Javoblar:
+                200 OK: So'z muvaffaqiyatli qaytarildi.
+                400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+        """
+
         queryset = Vocab.objects.all()
         en = request.query_params.get('en', None)
         uz = request.query_params.get('uz', None)
@@ -173,32 +332,95 @@ class VocabularyView(APIView):
         if unit: queryset = queryset.filter(unit=unit)
         serializer = self.serializer_class(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @swagger_auto_schema(operation_description=""" Yangi so'zlarni yaratish.""",
+                         request_body=VocabSerializer)
     def post(self, request):
+        """
+        Tavsif: Yangi so'z yaratish.
+        So'rov Tanasi:
+            en: Inglizcha so'z.
+            uz: O'zbekcha tarjima.
+            unit: Unit IDsi.
+        Javoblar:
+            201 Created:So'z muvaffaqiyatli yaratildi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+        """
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def put(self, request, id=None):
+
+class VocabularyRetrieveUpdateDeleteAPIView(APIView):
+    serializer_class = VocabSerializer
+    queryset = Vocab.objects.all()
+    my_tags = ("vocabulary",)
+
+    def get(self, request, id):
+        """
+        So'zlarni ID-isi bo'yicha olish.
+         """
+        vocab = get_object_or_404(Vocab, pk=id)
+        serializer = self.serializer_class(vocab)
+        return Response(serializer.data)
+
+    @swagger_auto_schema(operation_description="""Mavjud so'zlarni yangilash""",
+                         request_body=VocabSerializer)
+    def put(self, request, id):
+
+        """
+        Tavsif:So'zlarni yangilash.
+        So'rov Tanasi:
+            en: Yangi inglizcha so'z.
+            uz: Yangi o'zbekcha tarjima.
+            unit: Yangi unit IDsi.
+        Javoblar:
+            200 OK:So'zlar muvaffaqiyatli yangilandi.
+            404 Not Found: So'z topilmadi.
+        """
         vocab = get_object_or_404(Vocab, id=id)
         serializer = self.serializer_class(vocab, data=request.data)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def patch(self, request, id=None):
+    @swagger_auto_schema(operation_description="""Mavjud so'zlarni qisman yangilash.""",
+                         request_body=VocabSerializer, )
+    def patch(self, request, id):
+        """
+        Tavsif: So'zlarni qisman yangilash.
+        So'rov Tanasi:
+            en (ixtiyoriy): Yangi inglizcha so'z.
+            uz (ixtiyoriy): Yangi o'zbekcha tarjima.
+            unit (ixtiyoriy): Yangi unit IDsi.
+        Javoblar:
+            200 OK: So'z muvaffaqiyatli yangilandi.
+            400 Bad Request: Noto'g'ri ma'lumot yuborilgan bo'lsa, xato javobi.
+        """
         vocab = get_object_or_404(Vocab, id=id)
         serializer = self.serializer_class(vocab, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-    def delete(self, request, id=None):
+    @swagger_auto_schema(
+        operation_description="So'zni o'chirish",
+    )
+    def delete(self, request, id):
+        """
+        Tavsif: So'zni o'chirish.
+        So'rov Parametrlari:
+            id: So'z IDsi.
+        Javoblar:
+            204 No Content: So'z muvaffaqiyatli o'chirildi.
+            404 Not Found: So'z topilmadi.
+        """
         vocab = get_object_or_404(Vocab, id=id)
         try:
             vocab.delete()
-            return Response({"message": "Successfully deleted!!!"}, status=status.HTTP_204_NO_CONTENT)
+            return Response({"message": "So'z muvaffaqiyatli o'chirildi."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -208,7 +430,19 @@ class CheckView(APIView):
     serializer_class = CheckinYourselfSerializer
     my_tags = ("check",)
 
+    @swagger_auto_schema(
+        operation_description="Kitob va unit bo'yicha So'zlarni tekshirish.",
+        request_body=CheckinYourselfSerializer,
+    )
     def post(self, request, *args, **kwargs):
+        """
+        Tavsif: Kitob va unit bo'yicha So'zlarni tekshirish.
+        So'rov Tanasi:
+            book: Kitob IDsi.
+            unit: Unit raqami.
+        Javoblar:
+            200 OK: Tekshirilgan So'zlar ro'yxati qaytariladi.
+        """
         book = request.data["book"]
         unit = request.data["unit"]
         unit = Unit.objects.filter(book=book, unit_num=unit).first()
@@ -227,7 +461,19 @@ class CheckWordAPIView(APIView):
     my_tags = ("checkword",)
     serializer_class = CheckWordSerializer
 
+    @swagger_auto_schema(
+        operation_description="Inglizcha so'z bo'yicha So'zlarni tekshirish.",
+        request_body=CheckWordSerializer,
+    )
     def post(self, request):
+        """
+            Tavsif: Inglizcha so'z bo'yicha So'zlarni tekshirish.
+            So'rov Tanasi:
+                word: Inglizcha so'z.
+            Javoblar:
+                200 OK: So'z mavjud bo'lsa, So'zlar qaytariladi.
+                400 Bad Request: So'z topilmasa, xato javobi qaytariladi.
+        """
         word = request.data["word"]
         soz = Vocab.objects.filter(en=word)
         if soz.exists():

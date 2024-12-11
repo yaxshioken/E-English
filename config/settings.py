@@ -27,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG")
 
 ALLOWED_HOSTS = []
 
@@ -49,7 +49,8 @@ CUSTOM_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "drf_yasg",
-    'django_filters'
+    'django_filters',
+    'drf_spectacular'
 ]
 INSTALLED_APPS = DJANGO_APPS + CUSTOM_APPS + THIRD_PARTY_APPS
 
@@ -115,9 +116,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Internationalization
-# https://docs.djangoproject.com/en/5.1/topics/i18n/
-
 LANGUAGE_CODE = "en-us"
 
 TIME_ZONE = "UTC"
@@ -127,30 +125,9 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-
-# CELERY_BROKER_URL = 'redis://localhost:6379/0'
-# EMAIL_HOST = "smtp.gmail.com"
-# EMAIL_HOST_USER = 'absaitovdev@gmail.com'
-# EMAIL_HOST_PASSWORD = "ntwcjtuvodfncfyi"
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
-# # Default primary key field type
-# # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 STATIC_URL = "static/"
-
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-#
-# EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-# EMAIL_HOST = 'smtp.gmail.com'
-# EMAIL_PORT = 587
-# EMAIL_USE_TLS = True
-# EMAIL_HOST_USER =
-# EMAIL_HOST_PASSWORD =
-# DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
@@ -167,7 +144,6 @@ USERNAME_FIELD = "email"
 SWAGGER_SETTINGS = {"DEFAULT_AUTO_SCHEMA_CLASS": "config.swaggers.CustomAutoSchema"}
 REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': [
-        # 'django_filters.rest_framework.DjangoFilterBackend'
-        'config.search.CustomSearchFilter',
+        'rest_framework.filters.SearchFilter',
     ]
 }

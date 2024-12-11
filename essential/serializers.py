@@ -9,6 +9,7 @@ class BookSerializer(serializers.ModelSerializer):
         model = Book
         fields = ('id','name','level','image')
         read_only_fields = ('id',)
+        extra_kwargs = {"image": {"required": False}}
 
 
 class UnitSerializer(serializers.ModelSerializer):
