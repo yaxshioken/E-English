@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -50,7 +51,9 @@ THIRD_PARTY_APPS = [
     "rest_framework",
     "drf_yasg",
     'django_filters',
-    'drf_spectacular'
+    'drf_spectacular',
+    'rest_framework_simplejwt',
+    'corsheaders',
 ]
 INSTALLED_APPS = DJANGO_APPS + CUSTOM_APPS + THIRD_PARTY_APPS
 
@@ -58,6 +61,7 @@ INSTALLED_APPS = DJANGO_APPS + CUSTOM_APPS + THIRD_PARTY_APPS
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    'corsheaders.middleware.CorsMiddleware',
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -142,8 +146,30 @@ CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
 AUTH_USER_MODEL = "account.User"
 USERNAME_FIELD = "email"
 SWAGGER_SETTINGS = {"DEFAULT_AUTO_SCHEMA_CLASS": "config.swaggers.CustomAutoSchema"}
+
+#REST FRAMEWORK_SETTINGS
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    # 'DEFAULT_PERMISSION_CLASSES': (
+    #     'rest_framework.permissions.IsAuthenticated',
+    # ),
     'DEFAULT_FILTER_BACKENDS': [
         'rest_framework.filters.SearchFilter',
     ]
+}
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+}
+CORS_ORIGIN_ALLOW_ALL = True
+CORS_ALLOW_CREDENTIALS = True
+SPECTACULAR_SETTINGS = {
+    'SWAGGER_UI_SETTINGS': {
+        'persistAuthorization': True,
+    },
 }
