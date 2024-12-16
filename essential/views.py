@@ -1,12 +1,24 @@
+import json
+import random
+from http import HTTPStatus
+from random import shuffle
+
+from attr import dataclass
 from django.db.models import Q
+from django_filters.rest_framework import DjangoFilterBackend
 from drf_yasg.utils import swagger_auto_schema
+from pandas.core.dtypes.inference import is_float
+from redis import Redis
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 
 from rest_framework.filters import SearchFilter
-from rest_framework.generics import get_object_or_404
+from rest_framework.generics import get_object_or_404, ListAPIView
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from account.models import Result
 from essential.models import Book, Unit, Vocab
 
 from essential.serializers import (BookSerializer,
@@ -158,7 +170,8 @@ class UnitView(APIView):
     queryset = Unit.objects.all()
     serializer_class = UnitSerializer
     filter_backends = (SearchFilter,)
-    search_fields = ['name', 'unit_num', 'book__id']
+    filterset_fields = ('name','unit_num','book')
+    search_fields = ['name', 'unit_num', 'book']
     my_tags = ("unit",)
 
     def get(self, request):
@@ -425,10 +438,14 @@ class VocabularyRetrieveUpdateDeleteAPIView(APIView):
             return Response({"message": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+
+
+
+
 class CheckView(APIView):
     queryset = Vocab.objects.all()
     serializer_class = CheckinYourselfSerializer
-    my_tags = ("check",)
+    my_tags = ("checkword",)
 
     @swagger_auto_schema(
         operation_description="Kitob va unit bo'yicha So'zlarni tekshirish.",
@@ -443,18 +460,26 @@ class CheckView(APIView):
         Javoblar:
             200 OK: Tekshirilgan So'zlar ro'yxati qaytariladi.
         """
-        book = request.data["book"]
-        unit = request.data["unit"]
-        unit = Unit.objects.filter(book=book, unit_num=unit).first()
+        book = request.data["book_id"]
+        unit_num = request.data["unit_id"]
+        try:
+            unit = Unit.objects.filter(Q(book=book) & Q(unit_num=unit_num)).first()
+        except Unit.DoesNotExist:
+            raise ValidationError("No unit found for the provided book and unit numbers.")
 
-        if not unit:
-            return Response(
-                {"error": "Unit not found"}, status=status.HTTP_400_BAD_REQUEST
-            )
+        vocabs = list(Vocab.objects.filter(unit=unit).values_list('id', flat=True))
+        if not vocabs:
+            raise ValidationError('No vocabs found')
 
-        vocab = Vocab.objects.filter(unit=unit)
-        serializer = VocabSerializer(vocab, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        redis = Redis(decode_responses=True)
+        random_vocab = random.choice(vocabs)
+        vocabs.remove(random_vocab)
+        data = {"correct": 0, "incorrect": 0, "unit_id": unit.id, "vocabs_id": vocabs, "finish": False}
+        redis.set(request.user.id, json.dumps(data))
+
+        vocab = Vocab.objects.filter(id=random_vocab).first()
+        vocab_data = VocabSerializer(vocab).data
+        return Response({"data": vocab_data}, status=status.HTTP_200_OK)
 
 
 class CheckWordAPIView(APIView):
@@ -464,22 +489,126 @@ class CheckWordAPIView(APIView):
     @swagger_auto_schema(
         operation_description="Inglizcha so'z bo'yicha So'zlarni tekshirish.",
         request_body=CheckWordSerializer,
+
     )
     def post(self, request):
         """
-            Tavsif: Inglizcha so'z bo'yicha So'zlarni tekshirish.
-            So'rov Tanasi:
-                word: Inglizcha so'z.
-            Javoblar:
-                200 OK: So'z mavjud bo'lsa, So'zlar qaytariladi.
-                400 Bad Request: So'z topilmasa, xato javobi qaytariladi.
+        Tavsif: Inglizcha so'z bo'yicha So'zlarni tekshirish.
+        So'rov Tanasi:
+            word: Inglizcha so'z.
+        Javoblar:
+            200 OK: So'z mavjud bo'lsa, So'zlar qaytariladi.
+            400 Bad Request: So'z topilmasa, xato javobi qaytariladi.
         """
+        vocab_id = request.data["vocab_id"]
         word = request.data["word"]
-        soz = Vocab.objects.filter(en=word)
-        if soz.exists():
-            serializer = VocabSerializer(soz, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        else:
-            return Response(
-                {"error": "Vocab not found"}, status=status.HTTP_400_BAD_REQUEST
-            )
+        soz = Vocab.objects.filter(id=vocab_id).first()
+        redis = Redis(decode_responses=True)
+        r_data = json.loads(redis.get(request.user.id))
+        if  not r_data:
+            return Response(r_data, HTTPStatus.OK)
+        is_correct = soz.en.lower() == word.lower()
+        r_data['correct'] += is_correct
+        r_data['incorrect'] += not is_correct
+        if not r_data['vocabs_id']:
+            r_data['finish'] = True
+            redis.delete(request.user.id)
+            r_data['last_question'] = is_correct
+            return Response(r_data, HTTPStatus.OK)
+
+        vocabs_id = list(r_data['vocabs_id'])
+        random_vocab = random.choice(vocabs_id)
+        vocabs_id.remove(random_vocab)
+
+        r_data['last_question'] = is_correct
+        r_data['vocabs_id'] = vocabs_id
+        redis.set(request.user.id, json.dumps(r_data))
+        vocab = Vocab.objects.filter(id=random_vocab).first()
+        vocab_data = VocabSerializer(instance=vocab).data
+        return Response(data=vocab_data, status=status.HTTP_200_OK)
+
+
+class CheckView(APIView):
+    queryset = Vocab.objects.all()
+    serializer_class = CheckinYourselfSerializer
+    my_tags = ("checkword",)
+
+    @swagger_auto_schema(
+        operation_description="Kitob va unit bo'yicha So'zlarni tekshirish.",
+        request_body=CheckinYourselfSerializer,
+    )
+    def post(self, request, *args, **kwargs):
+        """
+        Tavsif: Kitob va unit bo'yicha So'zlarni tekshirish.
+        So'rov Tanasi:
+            book: Kitob IDsi.
+            unit: Unit raqami.
+        Javoblar:
+            200 OK: Tekshirilgan So'zlar ro'yxati qaytariladi.
+        """
+        book = request.data["book_id"]
+        unit_num = request.data["unit_id"]
+        try:
+            unit = Unit.objects.filter(Q(book=book) & Q(unit_num=unit_num)).first()
+        except Unit.DoesNotExist:
+            raise ValidationError("No unit found for the provided book and unit numbers.")
+
+        vocabs = list(Vocab.objects.filter(unit=unit).values_list('id', flat=True))
+        if not vocabs:
+            raise ValidationError('No vocabs found')
+
+        redis = Redis(decode_responses=True)
+        random_vocab = random.choice(vocabs)
+        vocabs.remove(random_vocab)
+        data = {"correct": 0, "incorrect": 0, "unit_id": unit.id, "vocabs_id": vocabs, "finish": False}
+        redis.set(request.user.id, json.dumps(data))
+
+        vocab = Vocab.objects.filter(id=random_vocab).first()
+        vocab_data = VocabSerializer(vocab).data
+        return Response({"data": vocab_data}, status=status.HTTP_200_OK)
+
+
+class CheckWordAPIView(APIView):
+    my_tags = ("checkword",)
+    serializer_class = CheckWordSerializer
+
+    @swagger_auto_schema(
+        operation_description="Inglizcha so'z bo'yicha So'zlarni tekshirish.",
+        request_body=CheckWordSerializer,
+
+    )
+    def post(self, request):
+        """
+        Tavsif: Inglizcha so'z bo'yicha So'zlarni tekshirish.
+        So'rov Tanasi:
+            word: Inglizcha so'z.
+        Javoblar:
+            200 OK: So'z mavjud bo'lsa, So'zlar qaytariladi.
+            400 Bad Request: So'z topilmasa, xato javobi qaytariladi.
+        """
+        vocab_id = request.data["vocab_id"]
+        word = request.data["word"]
+        soz = Vocab.objects.filter(id=vocab_id).first()
+        redis = Redis(decode_responses=True)
+        r_data = json.loads(redis.get(request.user.id))
+        if  not r_data:
+            return Response(r_data, HTTPStatus.OK)
+        is_correct = soz.en.lower() == word.lower()
+        r_data['correct'] += is_correct
+        r_data['incorrect'] += not is_correct
+        if not r_data['vocabs_id']:
+            r_data['finish'] = True
+            redis.delete(request.user.id)
+            r_data['last_question'] = is_correct
+            return Response(r_data, HTTPStatus.OK)
+
+        vocabs_id = list(r_data['vocabs_id'])
+        random_vocab = random.choice(vocabs_id)
+        vocabs_id.remove(random_vocab)
+
+        r_data['last_question'] = is_correct
+        r_data['vocabs_id'] = vocabs_id
+        redis.set(request.user.id, json.dumps(r_data))
+        vocab = Vocab.objects.filter(id=random_vocab).first()
+        vocab_data = VocabSerializer(instance=vocab).data
+        return Response(data=vocab_data, status=status.HTTP_200_OK)

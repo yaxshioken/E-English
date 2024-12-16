@@ -1,7 +1,7 @@
 import os
 from random import randrange
-
 from django.core.mail import send_mail
+from redis import Redis
 
 from config.celery import app
 
@@ -15,10 +15,10 @@ def send_email(email):
         from_email=os.getenv("EMAIL_HOST_USER"),
         recipient_list=[email],
     )
-    with open("detail.txt", "a") as f:
-        f.write(f"\nYuborilgan email:{email} uning kodi:{code}\n")
-        f.close()
-    with open("code.txt", "x") as f:
-        f.write(f"{code}")
-        f.close()
+    r=Redis(decode_responses=True)
+    r.set('code', code)
+    r.expire('code', 300)
+    print(r.get('code'))
     return code
+
+
